@@ -6,7 +6,7 @@ plugins {
 android {
     namespace = "com.softtrack.app"
     compileSdk = 36
-    defaultConfig { applicationId = "com.softtrack.app"; minSdk = 26; targetSdk = 36; versionCode = 4; versionName = "1.3.0" }
+    defaultConfig { applicationId = "com.softtrack.app"; minSdk = 26; targetSdk = 36; versionCode = 5; versionName = "1.3.1" }
     signingConfigs {
         create("softtrack") {
             val path = System.getenv("KEYSTORE_FILE")
