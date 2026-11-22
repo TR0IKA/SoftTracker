@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,20 +22,28 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,26 +68,41 @@ private fun switchColors(p: Palette) = SwitchDefaults.colors(
 @Composable
 fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
     val btnShape = p.shape(50.dp)
+    var customDialog by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Panel(p) {
             SectionLabel("Оформление", p)
-            LookPreview("Aurora", "Чёрный, слива и лаванда, звёзды и свечение", s.look == Look.AURORA, Color(0xFF0B0816), Color(0xFFB9A4FF), p) { a.onLook(Look.AURORA) }
-            Spacer(Modifier.height(6.dp))
-            LookPreview("Nocturne", "Графит, холодный воздух, спокойный контраст", s.look == Look.NOCTURNE, Color(0xFF101722), Color(0xFF91AFC2), p) { a.onLook(Look.NOCTURNE) }
+            LookPreview("Aurora", "Графит и слива, лавандовые акценты, тихие звёзды", s.look == Look.AURORA, Color(0xFF0B0816), Color(0xFFB9A4FF), p) { a.onLook(Look.AURORA) }
             Spacer(Modifier.height(6.dp))
             LookPreview("Field Notes", "Бумага, редакционная сетка, тёплый тон", s.look == Look.FIELD, Color(0xFFF0EEE7), Color(0xFFB79E54), p) { a.onLook(Look.FIELD) }
         }
         Panel(p) {
             SectionLabel("Акцентный цвет", p)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                accentOptions(s.look).forEach { (name, color) ->
-                    val current = (accentOptions(s.look).firstOrNull { it.first == s.accentName } ?: accentOptions(s.look).first()).first == name
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { a.onAccent(name) }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box2(color, current, p)
-                        Text(name, color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            val opts = accentOptions(s.look)
+            val custom = parseCustomAccent(s.accentName)
+            val currentName = if (custom != null) "" else (opts.firstOrNull { it.first == s.accentName } ?: opts.first()).first
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                opts.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { (name, color) ->
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable { a.onAccent(name) }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box2(color, currentName == name, p)
+                                Text(name, color = p.muted, fontSize = 10.sp, maxLines = 1, softWrap = false, modifier = Modifier.padding(top = 4.dp))
+                            }
+                        }
                     }
                 }
             }
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp).clip(RoundedCornerShape(10.dp)).clickable { customDialog = true }.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box2(custom ?: p.accent, custom != null, p)
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text("Свой цвет", color = p.ink, fontSize = 14.sp)
+                    Text(if (custom != null) s.accentName.uppercase() else "Выбрать любой оттенок с предпросмотром", color = p.muted, fontSize = 12.sp)
+                }
+            }
+        }
+        if (customDialog) {
+            CustomAccentDialog(resolveAccent(s.look, s.accentName), p, onPick = { a.onAccent(it); customDialog = false }, onDismiss = { customDialog = false })
         }
         Panel(p) {
             SectionLabel("Эффекты", p)
@@ -133,7 +157,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
         }
         Panel(p) {
             SectionLabel("О приложении", p)
-            Text("SoftTrack 1.2.0 Aurora", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("SoftTrack 1.3.0", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Text("Привычки, расписание по дням недели и спокойная статистика. Данные хранятся только на этом устройстве.", color = p.muted, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }
@@ -162,4 +186,40 @@ private fun LookPreview(title: String, desc: String, selected: Boolean, bg: Colo
             if (selected) Icon(Icons.Default.CheckCircle, null, tint = accent, modifier = Modifier.size(14.dp))
         }
     }
+}
+
+@Composable
+private fun CustomAccentDialog(initial: Color, p: Palette, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    var r by remember { mutableStateOf(initial.red * 255f) }
+    var g by remember { mutableStateOf(initial.green * 255f) }
+    var b by remember { mutableStateOf(initial.blue * 255f) }
+    val color = Color(r.toInt(), g.toInt(), b.toInt())
+    val hex = String.format("#%02X%02X%02X", r.toInt(), g.toInt(), b.toInt())
+    val ink = if (color.luminance() > 0.35f) Color(0xFF14101F) else Color.White
+    val sliderColors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color, inactiveTrackColor = p.line)
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = p.solid,
+        title = { Text("Свой цвет", color = p.ink, fontFamily = p.font, fontSize = 18.sp) },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(p.bgTop).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    StarGlyph(30.dp, color)
+                    Spacer(Modifier.width(12.dp))
+                    Box(Modifier.clip(RoundedCornerShape(50.dp)).background(color).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text("Пример", color = ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Text(hex, color = p.muted, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Slider(value = r, onValueChange = { r = it }, valueRange = 0f..255f, colors = sliderColors)
+                Slider(value = g, onValueChange = { g = it }, valueRange = 0f..255f, colors = sliderColors)
+                Slider(value = b, onValueChange = { b = it }, valueRange = 0f..255f, colors = sliderColors)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onPick(hex) }, shape = p.shape(50.dp), colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = ink)) { Text("Применить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена", color = p.muted) } }
+    )
 }

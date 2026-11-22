@@ -29,7 +29,8 @@ class Actions(
     val setStatus: (Habit, LocalDate, Int) -> Unit,
     val open: (Long) -> Unit,
     val saveNote: (Habit, LocalDate, String) -> Unit,
-    val toggleFavorite: (Habit) -> Unit
+    val toggleFavorite: (Habit) -> Unit,
+    val openTemplates: () -> Unit = {}
 )
 
 @Composable
@@ -47,11 +48,15 @@ fun chipColors(p: Palette) = FilterChipDefaults.filterChipColors(
 )
 
 @Composable
-fun EmptyState(title: String, desc: String, p: Palette, modifier: Modifier = Modifier) {
+fun EmptyState(title: String, desc: String, p: Palette, modifier: Modifier = Modifier, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
     Column(modifier.fillMaxWidth().padding(vertical = 34.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         StarGlyph(34.dp, p.accent)
         Text(title, color = p.ink, fontSize = 18.sp, fontFamily = p.font, modifier = Modifier.padding(top = 10.dp))
         Text(desc, color = p.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        if (actionLabel != null && onAction != null) {
+            Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp), shape = p.shape(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.accentInk)) { Text(actionLabel) }
+        }
     }
 }
 

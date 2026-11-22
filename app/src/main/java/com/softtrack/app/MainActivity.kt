@@ -119,12 +119,14 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var editId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var templatesOpen by rememberSaveable { mutableStateOf(false) }
+    var editTemplate by remember { mutableStateOf<HabitTemplate?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var permTick by remember { mutableStateOf(0) }
 
     var look by remember { mutableStateOf(runCatching { Look.valueOf(prefs.getString("look2", Look.AURORA.name) ?: Look.AURORA.name) }.getOrDefault(Look.AURORA)) }
     var accentName by remember(look) { mutableStateOf(prefs.getString(accentPrefKey(look), "") ?: "") }
-    var fxLevel by remember { mutableStateOf(prefs.getInt("fx_level", 2)) }
+    var fxLevel by remember { mutableStateOf(prefs.getInt("fx_v13", 1)) }
     var particles by remember { mutableStateOf(prefs.getBoolean("fx_particles", true)) }
     var notify by remember { mutableStateOf(prefs.getBoolean("notify", true)) }
 
@@ -185,7 +187,8 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
         },
         open = { detailId = it },
         saveNote = { h, d, t -> db.setNote(h.id, d.toString(), t); version++ },
-        toggleFavorite = { h -> db.setFavorite(h.id, !h.favorite); version++ }
+        toggleFavorite = { h -> db.setFavorite(h.id, !h.favorite); version++ },
+        openTemplates = { templatesOpen = true }
     )
 
     val settingsState = SettingsState(
@@ -196,7 +199,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     val settingsActions = SettingsActions(
         onLook = { look = it; prefs.edit().putString("look2", it.name).apply() },
         onAccent = { accentName = it; prefs.edit().putString(accentPrefKey(look), it).apply() },
-        onFxLevel = { fxLevel = it; prefs.edit().putInt("fx_level", it).apply() },
+        onFxLevel = { fxLevel = it; prefs.edit().putInt("fx_v13", it).apply() },
         onParticles = { particles = it; prefs.edit().putBoolean("fx_particles", it).apply() },
         onNotify = {
             notify = it
@@ -226,12 +229,13 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     val lastDetail = remember { arrayOfNulls<Habit>(1) }
     if (curDetail != null) lastDetail[0] = curDetail
     val editTarget = snap.habits.firstOrNull { it.id == editId }
-    val overlayOpen = editing || curDetail != null
+    val overlayOpen = editing || curDetail != null || templatesOpen
     val mainAlpha by animateFloatAsState(if (overlayOpen) 0f else 1f, label = "main-alpha")
 
     BackHandler(enabled = tab != 0) { tab = 0 }
     BackHandler(enabled = curDetail != null) { detailId = null }
-    BackHandler(enabled = editing) { editing = false }
+    BackHandler(enabled = editing) { editing = false; editTemplate = null }
+    BackHandler(enabled = templatesOpen && !editing) { templatesOpen = false }
 
     val view = LocalView.current
     SideEffect {
@@ -280,7 +284,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                     }
                     if (tab < 2) {
                         FloatingActionButton(
-                            onClick = { editId = null; editing = true },
+                            onClick = { editId = null; editTemplate = null; editing = true },
                             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
                             containerColor = p.accent, contentColor = p.accentInk,
                             shape = if (p.editorial) RoundedCornerShape(5.dp) else CircleShape
@@ -299,7 +303,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                         HabitDetail(
                             h, snap, today, p, actions,
                             onBack = { detailId = null },
-                            onEdit = { editId = h.id; editing = true },
+                            onEdit = { editId = h.id; editTemplate = null; editing = true },
                             onArchive = {
                                 db.setArchived(h.id, !h.archived, today)
                                 commit()
@@ -318,13 +322,42 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                 Box(Modifier.fillMaxSize().background(p.bgTop.copy(alpha = if (p.aurora) 0.94f else 1f)).pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding().navigationBarsPadding()) {
                     HabitEditor(
                         existing = editTarget, snap = snap, today = today, p = p,
+                        template = editTemplate,
+                        onTemplates = { editing = false; templatesOpen = true },
                         onSave = { h, rules ->
                             db.saveHabit(h, rules, today)
                             editing = false
+                            editTemplate = null
+                            templatesOpen = false
                             commit()
                             if (h.isGood && h.remindersOn && rules.any { it.minutes >= 0 }) askNotif()
                         },
-                        onClose = { editing = false }
+                        onClose = { editing = false; editTemplate = null }
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = templatesOpen && !editing, modifier = Modifier.fillMaxSize(),
+                enter = slideInVertically { it / 6 } + fadeIn(), exit = slideOutVertically { it / 6 } + fadeOut()
+            ) {
+                Box(Modifier.fillMaxSize().background(p.bgTop.copy(alpha = if (p.aurora) 0.97f else 1f)).pointerInput(Unit) { detectTapGestures { } }.statusBarsPadding().navigationBarsPadding()) {
+                    TemplatesScreen(
+                        snap = snap, p = p,
+                        onAdd = { list ->
+                            list.forEach { t ->
+                                db.saveHabit(
+                                    Habit(title = t.title, category = t.category, weeklyGoal = t.goal, remindersOn = t.minutes >= 0, createdDay = today),
+                                    t.days.map { RuleInput(it, t.minutes) }, today
+                                )
+                            }
+                            templatesOpen = false
+                            commit()
+                            if (list.any { it.minutes >= 0 }) askNotif()
+                            notice = "Добавлено привычек: ${list.size}"
+                        },
+                        onEdit = { t -> editTemplate = t; editId = null; editing = true },
+                        onClose = { templatesOpen = false }
                     )
                 }
             }
@@ -359,7 +392,7 @@ private fun Header(tab: Int, p: Palette) {
 @Composable
 private fun BottomNav(selected: Int, onSelect: (Int) -> Unit, p: Palette) {
     val barBg = when {
-        p.aurora -> Color(0xE60B0814)
+        p.aurora -> Color(0xF00A080F)
         else -> p.panel
     }
     Row(

@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -67,7 +68,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-enum class Look { AURORA, NOCTURNE, FIELD }
+enum class Look { AURORA, FIELD }
 
 data class Fx(val level: Int, val particles: Boolean)
 
@@ -87,23 +88,38 @@ data class Palette(
 }
 
 fun accentOptions(look: Look): List<Pair<String, Color>> = when (look) {
-    Look.AURORA -> listOf("Лаванда" to Color(0xFFB9A4FF), "Сирень" to Color(0xFFD7B4FF), "Слива" to Color(0xFFE08ACB), "Жемчуг" to Color(0xFFEDE8FF))
-    Look.NOCTURNE -> listOf("Сланец" to Color(0xFF91AFC2), "Шалфей" to Color(0xFF9DB59A), "Терракота" to Color(0xFFC77F68), "Охра" to Color(0xFFD1B96F))
-    Look.FIELD -> listOf("Сланец" to Color(0xFF9B8E70), "Шалфей" to Color(0xFF8B9F82), "Терракота" to Color(0xFFB96D58), "Охра" to Color(0xFFB79E54))
+    Look.AURORA -> listOf(
+        "Лаванда" to Color(0xFFB9A4FF), "Сирень" to Color(0xFFD7B4FF), "Слива" to Color(0xFFE08ACB), "Жемчуг" to Color(0xFFEDE8FF),
+        "Голубой" to Color(0xFF8FC7FF), "Мятный" to Color(0xFF8FE3C8), "Розовый" to Color(0xFFFF9EC4), "Коралл" to Color(0xFFFF8F7A),
+        "Золото" to Color(0xFFE8C468), "Изумруд" to Color(0xFF4FD1A0), "Закат" to Color(0xFFFFA05A), "Серебро" to Color(0xFFC9CCD6)
+    )
+    Look.FIELD -> listOf(
+        "Сланец" to Color(0xFF9B8E70), "Шалфей" to Color(0xFF8B9F82), "Терракота" to Color(0xFFB96D58), "Охра" to Color(0xFFB79E54),
+        "Индиго" to Color(0xFF5F6FA8), "Бордо" to Color(0xFF9A4A5A), "Хвоя" to Color(0xFF4F7A6B), "Графит" to Color(0xFF4A4A48),
+        "Лиловый" to Color(0xFF8A6FA0), "Морская" to Color(0xFF4F8A9A), "Мандарин" to Color(0xFFD0803A), "Роза" to Color(0xFFC47A8E)
+    )
 }
 
 fun accentPrefKey(look: Look) = if (look == Look.AURORA) "accent_aurora" else "accent"
 
-fun buildPalette(look: Look, accentName: String): Palette {
+/** Свой цвет хранится в имени акцента как «#RRGGBB». */
+fun parseCustomAccent(name: String): Color? =
+    if (name.startsWith("#")) runCatching { Color(android.graphics.Color.parseColor(name)) }.getOrNull() else null
+
+fun resolveAccent(look: Look, accentName: String): Color {
     val opts = accentOptions(look)
-    val accent = (opts.firstOrNull { it.first == accentName } ?: opts.first()).second
+    return parseCustomAccent(accentName) ?: (opts.firstOrNull { it.first == accentName } ?: opts.first()).second
+}
+
+fun buildPalette(look: Look, accentName: String): Palette {
+    val accent = resolveAccent(look, accentName)
+    val dark = Color(0xFF14101F)
+    val ink = if (accent.luminance() > 0.35f) dark else Color.White
     return when (look) {
-        Look.AURORA -> Palette(look, Color(0xFF05040A), Color(0xFF1B1030), Color(0xFF1A1426), Color(0xB81A1426), Color(0xFF261C3B),
-            Color(0xFFF4F0FB), Color(0xFFA99FC2), Color(0xFF35294D), accent, Color(0xFF150F26), Color(0xFFE59AAE))
-        Look.NOCTURNE -> Palette(look, Color(0xFF101722), Color(0xFF101722), Color(0xFF192331), Color(0xFF192331), Color(0xFF202C3B),
-            Color(0xFFF1F3F5), Color(0xFF98A6B8), Color(0xFF344253), accent, Color(0xFF101722), Color(0xFFD98C82))
+        Look.AURORA -> Palette(look, Color(0xFF060509), Color(0xFF15101F), Color(0xFF17131F), Color(0xB817131F), Color(0xFF231D2E),
+            Color(0xFFF5F2FA), Color(0xFFA59DB5), Color(0xFF2E2840), accent, ink, Color(0xFFE59AAE))
         Look.FIELD -> Palette(look, Color(0xFFF0EEE7), Color(0xFFF0EEE7), Color(0xFFE7E4DA), Color(0xFFE7E4DA), Color(0xFFE0DDD2),
-            Color(0xFF171714), Color(0xFF77756C), Color(0xFFC9C5B9), accent, Color(0xFF171714), Color(0xFF9A594B))
+            Color(0xFF171714), Color(0xFF77756C), Color(0xFFC9C5B9), accent, if (accent.luminance() > 0.35f) Color(0xFF171714) else Color.White, Color(0xFF9A594B))
     }
 }
 
@@ -111,7 +127,7 @@ fun buildPalette(look: Look, accentName: String): Palette {
 
 fun DrawScope.drawStar(c: Offset, r: Float, alpha: Float = 1f, tint: Color = Color(0xFFD9CCFF)) {
     drawCircle(
-        Brush.radialGradient(listOf(tint.copy(alpha = 0.35f * alpha), Color.Transparent), center = c, radius = r * 3.2f),
+        Brush.radialGradient(listOf(tint.copy(alpha = 0.26f * alpha), Color.Transparent), center = c, radius = r * 3.2f),
         radius = r * 3.2f, center = c
     )
     val k = 0.16f
@@ -151,7 +167,7 @@ fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier) {
     val animated = fx.level > 0
     val phaseState: State<Float> = if (animated) {
         val t = rememberInfiniteTransition(label = "aurora")
-        t.animateFloat(0f, 1f, infiniteRepeatable(tween(60000, easing = LinearEasing)), label = "phase")
+        t.animateFloat(0f, 1f, infiniteRepeatable(tween(90000, easing = LinearEasing)), label = "phase")
     } else {
         remember { mutableStateOf(0.25f) }
     }
@@ -170,28 +186,28 @@ fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier) {
         if (fx.level == 0) return@Canvas
         val ph = phaseState.value
         val a = 2f * PI.toFloat() * ph
-        val glow = 0.10f + 0.06f * fx.level
+        val glow = 0.05f + 0.035f * fx.level
         fun blob(cx: Float, cy: Float, r: Float, c: Color) {
             drawCircle(Brush.radialGradient(listOf(c.copy(alpha = glow), Color.Transparent), center = Offset(cx, cy), radius = r), radius = r, center = Offset(cx, cy))
         }
-        blob(w * (0.2f + 0.12f * sin(a)), h * (0.16f + 0.07f * cos(a)), w * 0.95f, Color(0xFF7A5CFF))
-        blob(w * (0.9f + 0.08f * cos(a)), h * (0.55f + 0.08f * sin(a)), w * 0.85f, Color(0xFFB03FA6))
-        blob(w * (0.3f + 0.14f * sin(2f * a + 1f)), h * (0.98f + 0.03f * cos(a)), w * 0.95f, Color(0xFF4B2A9E))
+        blob(w * (0.2f + 0.12f * sin(a)), h * (0.16f + 0.07f * cos(a)), w * 0.95f, Color(0xFF6B5AA8))
+        blob(w * (0.9f + 0.08f * cos(a)), h * (0.55f + 0.08f * sin(a)), w * 0.85f, Color(0xFF8E4A86))
+        blob(w * (0.3f + 0.14f * sin(2f * a + 1f)), h * (0.98f + 0.03f * cos(a)), w * 0.95f, Color(0xFF3A2A6B))
         if (!fx.particles) return@Canvas
-        val nStars = 4 + fx.level * 3
-        val nSparks = 8 + fx.level * 12
+        val nStars = 2 + fx.level * 2
+        val nSparks = 6 + fx.level * 8
         for (i in 0 until minOf(nSparks, sparks.size)) {
             val s = sparks[i]
             val yy = (((s.y - ph * s.k) % 1f) + 1f) % 1f
             val xx = s.x + 0.02f * sin(a * s.k + s.off * 6.28f)
             val tw = 0.35f + 0.65f * abs(sin(PI.toFloat() * (ph * s.tw + s.off)))
-            drawCircle(Color(0xFFE6DDFF).copy(alpha = 0.5f * tw), radius = (0.7f + s.size * 1.1f) * density, center = Offset(xx * w, yy * h))
+            drawCircle(Color(0xFFE6DDFF).copy(alpha = 0.36f * tw), radius = (0.7f + s.size * 1.1f) * density, center = Offset(xx * w, yy * h))
         }
         for (i in 0 until minOf(nStars, stars.size)) {
             val s = stars[i]
             val tw = 0.45f + 0.55f * abs(sin(PI.toFloat() * (ph * s.tw + s.off)))
             val bob = 5f * density * sin(a * s.k + s.off * 6.28f)
-            drawStar(Offset(s.x * w, s.y * h + bob), (3.5f + s.size * 4.5f) * density, tw)
+            drawStar(Offset(s.x * w, s.y * h + bob), (3f + s.size * 3.5f) * density, tw * 0.9f)
         }
     }
 }
@@ -230,11 +246,11 @@ fun Panel(
         .then(if (onClick != null) Modifier.bounceClick(onClick) else Modifier)
         .clip(shape)
         .then(
-            if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(Color(0xCC251B3A), Color(0xB0150F25))))
+            if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(Color(0xD0211B2C), Color(0xD017131F))))
             else Modifier.background(p.panel)
         )
         .then(
-            if (p.aurora) Modifier.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.03f))), shape)
+            if (p.aurora) Modifier.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.12f), Color.White.copy(alpha = 0.03f))), shape)
             else if (p.editorial) Modifier.border(1.dp, p.line, shape)
             else Modifier
         )

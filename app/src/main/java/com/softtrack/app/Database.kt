@@ -25,27 +25,10 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
         }
     }
 
-    private data class Sample(val title: String, val category: String, val weekly: Boolean = false)
-
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE habits(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,kind TEXT NOT NULL,schedule TEXT NOT NULL,note TEXT NOT NULL,favorite INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,weekly_goal INTEGER NOT NULL DEFAULT 0,reminders_on INTEGER NOT NULL DEFAULT 1,created_day TEXT NOT NULL DEFAULT '')")
         db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT,habit_id INTEGER NOT NULL,day TEXT NOT NULL,status INTEGER NOT NULL,UNIQUE(habit_id,day))")
         createExtras(db)
-        val today = LocalDate.now()
-        listOf(
-            Sample("Умыться утром", "Уход за собой"), Sample("Умыться вечером", "Уход за собой"),
-            Sample("Увлажняющий крем", "Уход за собой"), Sample("SPF при выходе на улицу", "Уход за собой"),
-            Sample("Почистить зубы утром", "Зубы и улыбка"), Sample("Почистить зубы вечером", "Зубы и улыбка"),
-            Sample("Использовать зубную нить", "Зубы и улыбка"), Sample("Спать 8–10 часов", "Здоровье и сон"),
-            Sample("Погулять на свежем воздухе", "Здоровье и сон"), Sample("Пить воду в течение дня", "Здоровье и сон"),
-            Sample("Лёгкая разминка", "Спорт и осанка"), Sample("Занятие спортом", "Спорт и осанка", weekly = true),
-            Sample("Перерывы при долгом сидении", "Спорт и осанка"), Sample("Следить за чистотой волос", "Волосы и гигиена"),
-            Sample("Поддерживать ногти в порядке", "Волосы и гигиена"), Sample("Подготовить одежду", "Стиль и внешний вид")
-        ).forEach { s ->
-            val h = Habit(title = s.title, category = s.category, weeklyGoal = if (s.weekly) 3 else 0, createdDay = today)
-            val id = insertHabitRow(db, h, if (s.weekly) "weekly" else "daily")
-            insertLegacyRules(db, id, "good", if (s.weekly) "weekly" else "daily", today)
-        }
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

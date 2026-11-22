@@ -241,20 +241,25 @@ private fun DayCell(h: Habit, snap: Snapshot, d: LocalDate, today: LocalDate, p:
 @Composable
 fun HabitEditor(
     existing: Habit?, snap: Snapshot, today: LocalDate, p: Palette,
-    onSave: (Habit, List<RuleInput>) -> Unit, onClose: () -> Unit
+    onSave: (Habit, List<RuleInput>) -> Unit, onClose: () -> Unit,
+    template: HabitTemplate? = null, onTemplates: (() -> Unit)? = null
 ) {
     val ctx = LocalContext.current
-    var title by remember { mutableStateOf(existing?.title ?: "") }
+    var title by remember { mutableStateOf(existing?.title ?: template?.title ?: "") }
     var note by remember { mutableStateOf(existing?.note ?: "") }
-    var category by remember { mutableStateOf(existing?.category ?: categories.first()) }
+    var category by remember { mutableStateOf(existing?.category ?: template?.category ?: categories.first()) }
     var kind by remember { mutableStateOf(existing?.kind ?: "good") }
     var favorite by remember { mutableStateOf(existing?.favorite ?: false) }
     var remindersOn by remember { mutableStateOf(existing?.remindersOn ?: true) }
-    var goal by remember { mutableStateOf(existing?.weeklyGoal ?: 0) }
+    var goal by remember { mutableStateOf(existing?.weeklyGoal ?: template?.goal ?: 0) }
     var catMenu by remember { mutableStateOf(false) }
     val days = remember {
         mutableStateMapOf<Int, Int>().apply {
-            val src = if (existing != null) snap.lastRuleInputs(existing) else (1..7).map { RuleInput(it, -1) }
+            val src = when {
+                existing != null -> snap.lastRuleInputs(existing)
+                template != null -> template.days.map { RuleInput(it, template.minutes) }
+                else -> (1..7).map { RuleInput(it, -1) }
+            }
             src.forEach { put(it.dow, it.minutes) }
         }
     }
@@ -266,6 +271,9 @@ fun HabitEditor(
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Закрыть", tint = p.ink) }
             Text(if (existing == null) "Новая привычка" else "Изменить привычку", color = p.ink, fontSize = 17.sp, fontFamily = p.font, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            if (existing == null && template == null && onTemplates != null) {
+                TextButton(onClick = onTemplates) { Text("Шаблоны", color = p.accent) }
+            }
             Button(
                 enabled = canSave, shape = p.shape(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.accentInk),

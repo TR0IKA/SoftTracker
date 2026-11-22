@@ -82,7 +82,7 @@ fun TodayScreen(snap: Snapshot, today: LocalDate, p: Palette, a: Actions) {
         }
         if (list.isEmpty()) {
             item(key = "empty") {
-                if (active.isEmpty()) EmptyState("Пока здесь пусто", "Добавь первую привычку, чтобы начать.", p)
+                if (active.isEmpty()) EmptyState("Пока здесь пусто", "Добавь первую привычку или выбери готовые из шаблонов.", p, actionLabel = "Выбрать из шаблонов", onAction = a.openTemplates)
                 else EmptyState("На сегодня ничего не запланировано", "Дни вне расписания не считаются пропуском.", p)
             }
         }

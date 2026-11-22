@@ -109,7 +109,9 @@ fun HabitsScreen(snap: Snapshot, today: LocalDate, p: Palette, a: Actions) {
         if (sorted.isEmpty()) {
             EmptyState(
                 if (filter == "Архив") "Архив пуст" else "Ничего не найдено",
-                if (filter == "Архив") "Сюда попадают привычки, которые ты убрал из ежедневного списка." else "Попробуй другой фильтр или добавь привычку.", p
+                if (filter == "Архив") "Сюда попадают привычки, которые ты убрал из ежедневного списка." else "Попробуй другой фильтр или добавь привычку.", p,
+                actionLabel = if (snap.habits.isEmpty()) "Выбрать из шаблонов" else null,
+                onAction = if (snap.habits.isEmpty()) a.openTemplates else null
             )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 110.dp)) {
