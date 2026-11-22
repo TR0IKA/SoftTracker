@@ -6,7 +6,24 @@ plugins {
 android {
     namespace = "com.softtrack.app"
     compileSdk = 36
-    defaultConfig { applicationId = "com.softtrack.app"; minSdk = 26; targetSdk = 36; versionCode = 3; versionName = "1.2.0" }
+    defaultConfig { applicationId = "com.softtrack.app"; minSdk = 26; targetSdk = 36; versionCode = 4; versionName = "1.3.0" }
+    signingConfigs {
+        create("softtrack") {
+            val path = System.getenv("KEYSTORE_FILE")
+            if (!path.isNullOrBlank() && file(path).exists()) {
+                storeFile = file(path)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "softtrack"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        getByName("debug") {
+            val sc = signingConfigs.getByName("softtrack")
+            if (sc.storeFile != null) signingConfig = sc
+        }
+    }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
