@@ -375,7 +375,8 @@ private fun BottomNav(selected: Int, onSelect: (Int) -> Unit, p: Palette) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(Modifier.height(10.dp), contentAlignment = Alignment.Center) {
-                    AnimatedVisibility(visible = sel, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) { StarGlyph(10.dp, p.accent) }
+                    val starScale by animateFloatAsState(if (sel) 1f else 0f, label = "nav-star")
+                    StarGlyph(10.dp, p.accent, modifier = Modifier.graphicsLayer { scaleX = starScale; scaleY = starScale; alpha = starScale })
                 }
                 Icon(tabIcons[i], tabNames[i], tint = tint, modifier = Modifier.height(22.dp))
                 Text(tabNames[i], color = if (sel) p.ink else p.muted, fontSize = 10.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
