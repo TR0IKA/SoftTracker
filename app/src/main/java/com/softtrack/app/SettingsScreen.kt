@@ -1,5 +1,6 @@
 package com.softtrack.app
 
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,14 +52,15 @@ import androidx.compose.ui.unit.sp
 class SettingsState(
     val look: Look, val accentName: String, val fxLevel: Int, val particles: Boolean,
     val notify: Boolean, val notifGranted: Boolean, val exactOk: Boolean,
-    val bgOn: Boolean = false, val bgDim: Float = 0.55f
+    val bgOn: Boolean = false, val bgDim: Float = 0.55f, val devOn: Boolean = false
 )
 
 class SettingsActions(
     val onLook: (Look) -> Unit, val onAccent: (String) -> Unit, val onFxLevel: (Int) -> Unit, val onParticles: (Boolean) -> Unit,
     val onNotify: (Boolean) -> Unit, val onRequestPermission: () -> Unit, val onExactAlarms: () -> Unit, val onTestNotification: () -> Unit,
     val onExport: () -> Unit, val onImport: () -> Unit,
-    val onPickBg: () -> Unit = {}, val onClearBg: () -> Unit = {}, val onBgDim: (Float) -> Unit = {}
+    val onPickBg: () -> Unit = {}, val onClearBg: () -> Unit = {}, val onBgDim: (Float) -> Unit = {},
+    val onDevOn: () -> Unit = {}, val onDevColor: (String, Int?) -> Unit = { _, _ -> }, val onDevReset: () -> Unit = {}, val onDevOff: () -> Unit = {}
 )
 
 @Composable
@@ -71,6 +73,8 @@ private fun switchColors(p: Palette) = SwitchDefaults.colors(
 fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
     val btnShape = p.shape(50.dp)
     var customDialog by remember { mutableStateOf(false) }
+    var devEditKey by remember { mutableStateOf<String?>(null) }
+    var versionTaps by remember { mutableStateOf(0) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Panel(p) {
             SectionLabel("Оформление", p)
@@ -106,7 +110,11 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
             }
         }
         if (customDialog) {
-            CustomAccentDialog(resolveAccent(s.look, s.accentName), p, onPick = { a.onAccent(it); customDialog = false }, onDismiss = { customDialog = false })
+            ColorDialog(
+                "Свой цвет", resolveAccent(s.look, s.accentName), p, allowAlpha = false, onReset = null,
+                onPick = { a.onAccent(String.format("#%06X", it.toArgb() and 0xFFFFFF)); customDialog = false },
+                onDismiss = { customDialog = false }
+            )
         }
         Panel(p) {
             SectionLabel("Фон приложения", p)
@@ -180,9 +188,45 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
                 Icon(Icons.Default.FileUpload, null, tint = p.ink); Spacer(Modifier.width(8.dp)); Text("Импортировать JSON", color = p.ink)
             }
         }
+        if (s.devOn) {
+            Panel(p) {
+                SectionLabel("Режим разработчика", p)
+                Text("Нажми на элемент, чтобы задать ему отдельный цвет. Пока не задан, берётся цвет оформления.", color = p.muted, fontSize = 13.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(6.dp))
+                devKeys.forEach { (key, label) ->
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { devEditKey = key }.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, color = p.ink, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Box2(devColor(p, key), false, p)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = a.onDevReset, shape = btnShape) { Text("Сбросить всё", color = p.ink) }
+                    TextButton(onClick = a.onDevOff) { Text("Выключить режим", color = p.muted) }
+                }
+            }
+            val ek = devEditKey
+            if (ek != null) {
+                ColorDialog(
+                    devKeys.firstOrNull { it.first == ek }?.second ?: "Цвет", devColor(p, ek), p, allowAlpha = true,
+                    onReset = { a.onDevColor(ek, null); devEditKey = null },
+                    onPick = { a.onDevColor(ek, it.toArgb()); devEditKey = null },
+                    onDismiss = { devEditKey = null }
+                )
+            }
+        }
         Panel(p) {
             SectionLabel("О приложении", p)
-            Text("SoftTrack 1.3.1", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(
+                "SoftTrack 1.3.2", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable {
+                    if (!s.devOn) {
+                        versionTaps++
+                        if (versionTaps >= 7) { versionTaps = 0; a.onDevOn() }
+                    }
+                }
+            )
+            if (!s.devOn && versionTaps >= 3) Text("До режима разработчика: ${7 - versionTaps}", color = p.muted, fontSize = 12.sp)
             Text("Привычки, расписание по дням недели и спокойная статистика. Данные хранятся только на этом устройстве.", color = p.muted, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }
@@ -214,21 +258,23 @@ private fun LookPreview(title: String, desc: String, selected: Boolean, bg: Colo
 }
 
 @Composable
-private fun CustomAccentDialog(initial: Color, p: Palette, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+private fun ColorDialog(title: String, initial: Color, p: Palette, allowAlpha: Boolean, onReset: (() -> Unit)?, onPick: (Color) -> Unit, onDismiss: () -> Unit) {
     var r by remember { mutableStateOf(initial.red * 255f) }
     var g by remember { mutableStateOf(initial.green * 255f) }
     var b by remember { mutableStateOf(initial.blue * 255f) }
-    val color = Color(r.toInt(), g.toInt(), b.toInt())
+    var al by remember { mutableStateOf(initial.alpha * 255f) }
+    val color = Color(r.toInt(), g.toInt(), b.toInt(), if (allowAlpha) al.toInt() else 255)
     val hex = String.format("#%02X%02X%02X", r.toInt(), g.toInt(), b.toInt())
-    val ink = if (color.luminance() > 0.35f) Color(0xFF14101F) else Color.White
-    val sliderColors = SliderDefaults.colors(thumbColor = color, activeTrackColor = color, inactiveTrackColor = p.line)
+    val solid = Color(r.toInt(), g.toInt(), b.toInt())
+    val ink = if (solid.luminance() > 0.35f) Color(0xFF14101F) else Color.White
+    val sliderColors = SliderDefaults.colors(thumbColor = solid, activeTrackColor = solid, inactiveTrackColor = p.line)
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = p.solid,
-        title = { Text("Свой цвет", color = p.ink, fontFamily = p.font, fontSize = 18.sp) },
+        title = { Text(title, color = p.ink, fontFamily = p.font, fontSize = 18.sp) },
         text = {
             Column {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(p.bgTop).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    StarGlyph(30.dp, color)
+                    StarGlyph(30.dp, solid)
                     Spacer(Modifier.width(12.dp))
                     Box(Modifier.clip(RoundedCornerShape(50.dp)).background(color).padding(horizontal = 16.dp, vertical = 8.dp)) {
                         Text("Пример", color = ink, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -240,11 +286,20 @@ private fun CustomAccentDialog(initial: Color, p: Palette, onPick: (String) -> U
                 Slider(value = r, onValueChange = { r = it }, valueRange = 0f..255f, colors = sliderColors)
                 Slider(value = g, onValueChange = { g = it }, valueRange = 0f..255f, colors = sliderColors)
                 Slider(value = b, onValueChange = { b = it }, valueRange = 0f..255f, colors = sliderColors)
+                if (allowAlpha) {
+                    Text("Прозрачность", color = p.muted, fontSize = 12.sp)
+                    Slider(value = al, onValueChange = { al = it }, valueRange = 20f..255f, colors = sliderColors)
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onPick(hex) }, shape = p.shape(50.dp), colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = ink)) { Text("Применить") }
+            Button(onClick = { onPick(color) }, shape = p.shape(50.dp), colors = ButtonDefaults.buttonColors(containerColor = solid, contentColor = ink)) { Text("Применить") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена", color = p.muted) } }
+        dismissButton = {
+            Row {
+                if (onReset != null) TextButton(onClick = onReset) { Text("Сбросить", color = p.muted) }
+                TextButton(onClick = onDismiss) { Text("Отмена", color = p.muted) }
+            }
+        }
     )
 }

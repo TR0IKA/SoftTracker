@@ -1,5 +1,9 @@
 package com.softtrack.app
 
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateDpAsState
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.ui.graphics.ImageBitmap
@@ -136,6 +140,9 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     var particles by remember { mutableStateOf(prefs.getBoolean("fx_particles", true)) }
     var notify by remember { mutableStateOf(prefs.getBoolean("notify", true)) }
     var bgVersion by remember { mutableStateOf(0) }
+    var roadSelected by remember { mutableStateOf<Long?>(null) }
+    var dev by remember { mutableStateOf(readDev(prefs)) }
+    var devOn by remember { mutableStateOf(prefs.getBoolean("dev_on", false)) }
     var bgDim by remember { mutableStateOf(prefs.getFloat("bg_dim", 0.55f)) }
     val bgImage by produceState<ImageBitmap?>(null, bgVersion) {
         value = withContext(Dispatchers.IO) { Imgs.load(ctx, Imgs.BG) }
@@ -156,7 +163,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     }
 
     val snap = remember(version) { db.loadSnapshot() }
-    val p = buildPalette(look, accentName)
+    val p = applyDev(buildPalette(look, accentName), dev)
     val fx = Fx(fxLevel, particles)
 
     fun commit() {
@@ -212,7 +219,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
         look, accentName, fxLevel, particles, notify,
         notifGranted = permTick >= 0 && Reminders.canNotify(ctx),
         exactOk = permTick >= 0 && Reminders.canExact(ctx),
-        bgOn = bgImage != null, bgDim = bgDim
+        bgOn = bgImage != null, bgDim = bgDim, devOn = devOn
     )
     val settingsActions = SettingsActions(
         onLook = { look = it; prefs.edit().putString("look2", it.name).apply() },
@@ -242,7 +249,28 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
         onImport = { import.launch(arrayOf("application/json", "text/*")) },
         onPickBg = { pickBg.launch("image/*") },
         onClearBg = { Imgs.delete(ctx, Imgs.BG); bgVersion++ },
-        onBgDim = { bgDim = it; prefs.edit().putFloat("bg_dim", it).apply() }
+        onBgDim = { bgDim = it; prefs.edit().putFloat("bg_dim", it).apply() },
+        onDevOn = { devOn = true; prefs.edit().putBoolean("dev_on", true).apply(); notice = "Режим разработчика включён" },
+        onDevColor = { k, c ->
+            val e = prefs.edit()
+            if (c == null) e.remove("dev_$k") else e.putInt("dev_$k", c)
+            e.apply()
+            dev = readDev(prefs)
+        },
+        onDevReset = {
+            val e = prefs.edit()
+            for ((k, _) in devKeys) e.remove("dev_$k")
+            e.apply()
+            dev = readDev(prefs)
+        },
+        onDevOff = {
+            val e = prefs.edit()
+            for ((k, _) in devKeys) e.remove("dev_$k")
+            e.putBoolean("dev_on", false)
+            e.apply()
+            dev = readDev(prefs)
+            devOn = false
+        }
     )
 
     // экраны поверх основного
@@ -252,6 +280,13 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     val editTarget = snap.habits.firstOrNull { it.id == editId }
     val overlayOpen = editing || curDetail != null || templatesOpen
     val mainAlpha by animateFloatAsState(if (overlayOpen) 0f else 1f, label = "main-alpha")
+    LaunchedEffect(tab, look) { if (tab != 0 || look != Look.ROAD) roadSelected = null }
+    val fabLift by animateDpAsState(
+        if (tab == 0 && look == Look.ROAD && roadSelected != null) 132.dp else 0.dp,
+        spring(dampingRatio = 0.75f, stiffness = 300f), label = "fab-lift"
+    )
+    val fabColor = p.fab ?: p.accent
+    val fabInk = if (p.fab != null) (if (fabColor.luminance() > 0.35f) Color(0xFF14101F) else Color.White) else p.accentInk
 
     BackHandler(enabled = tab != 0) { tab = 0 }
     BackHandler(enabled = curDetail != null) { detailId = null }
@@ -301,7 +336,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                         label = "tabs"
                     ) { t ->
                         when (t) {
-                            0 -> if (look == Look.ROAD) RoadScreen(snap, today, p, actions, fx) else TodayScreen(snap, today, p, actions)
+                            0 -> if (look == Look.ROAD) RoadScreen(snap, today, p, actions, fx, roadSelected) { roadSelected = it } else TodayScreen(snap, today, p, actions)
                             1 -> HabitsScreen(snap, today, p, actions)
                             2 -> CalendarScreen(snap, today, p, actions)
                             3 -> StatsScreen(snap, today, p)
@@ -311,8 +346,8 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                     if (tab < 2) {
                         FloatingActionButton(
                             onClick = { editId = null; editTemplate = null; editing = true },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-                            containerColor = p.accent, contentColor = p.accentInk,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).offset(y = -fabLift),
+                            containerColor = fabColor, contentColor = fabInk,
                             shape = if (p.editorial) RoundedCornerShape(5.dp) else CircleShape
                         ) { Icon(Icons.Default.Add, "Добавить привычку") }
                     }
@@ -420,6 +455,7 @@ private fun Header(tab: Int, p: Palette) {
 @Composable
 private fun BottomNav(selected: Int, onSelect: (Int) -> Unit, p: Palette) {
     val barBg = when {
+        p.nav != null -> p.nav
         p.aurora -> Color(0xF00A080F)
         else -> p.panel
     }

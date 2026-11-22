@@ -78,7 +78,10 @@ data class Palette(
     val bgTop: Color, val bgBottom: Color,
     val solid: Color, val panel: Color, val panel2: Color,
     val ink: Color, val muted: Color, val line: Color,
-    val accent: Color, val accentInk: Color, val danger: Color
+    val accent: Color, val accentInk: Color, val danger: Color,
+    // отдельные цвета режима разработчика; null — берётся из оформления
+    val fab: Color? = null, val nav: Color? = null, val road: Color? = null, val bgPlanet: Color? = null,
+    val planetDone: Color? = null, val planetTodo: Color? = null, val stars: Color? = null, val card: Color? = null
 ) {
     val editorial: Boolean get() = false
     /** Тёмные «звёздные» оформления: стеклянные панели и фон с эффектами. */
@@ -137,6 +140,54 @@ fun buildPalette(look: Look, accentName: String): Palette {
         Look.NOCTURNE -> Palette(look, Color(0xFF101722), Color(0xFF101722), Color(0xFF192331), Color(0xFF192331), Color(0xFF202C3B),
             Color(0xFFF1F3F5), Color(0xFF98A6B8), Color(0xFF344253), accent, Color(0xFF101722), Color(0xFFD98C82))
     }
+}
+
+/** Элементы, цвет которых можно менять по отдельности в режиме разработчика. */
+val devKeys: List<Pair<String, String>> = listOf(
+    "accent" to "Акцент (общий)", "fab" to "Кнопка «+»", "bg_top" to "Фон сверху", "bg_bottom" to "Фон снизу",
+    "card" to "Карточки", "nav" to "Нижняя панель", "ink" to "Основной текст", "muted" to "Вторичный текст",
+    "line" to "Линии и рамки", "road" to "Дорога", "bg_planet" to "Планета на фоне",
+    "planet_done" to "Планеты: выполнено", "planet_todo" to "Планеты: впереди", "stars" to "Звёзды"
+)
+
+fun devColor(p: Palette, key: String): Color = when (key) {
+    "accent" -> p.accent
+    "fab" -> p.fab ?: p.accent
+    "bg_top" -> p.bgTop
+    "bg_bottom" -> p.bgBottom
+    "card" -> p.card ?: p.panel2
+    "nav" -> p.nav ?: p.bgTop
+    "ink" -> p.ink
+    "muted" -> p.muted
+    "line" -> p.line
+    "road" -> p.road ?: p.accent
+    "bg_planet" -> p.bgPlanet ?: p.accent
+    "planet_done" -> p.planetDone ?: p.accent
+    "planet_todo" -> p.planetTodo ?: lerp(p.panel2, p.accent, 0.38f)
+    else -> p.stars ?: Color.White
+}
+
+/** dev: ключ -> цвет в ARGB. Накладывается поверх выбранного оформления. */
+fun applyDev(p: Palette, dev: Map<String, Int>): Palette {
+    if (dev.isEmpty()) return p
+    fun c(k: String): Color? = dev[k]?.let { Color(it) }
+    val accent = c("accent") ?: p.accent
+    val accentInk = if (c("accent") != null) (if (accent.luminance() > 0.35f) Color(0xFF14101F) else Color.White) else p.accentInk
+    val card = c("card")
+    return p.copy(
+        bgTop = c("bg_top") ?: p.bgTop, bgBottom = c("bg_bottom") ?: p.bgBottom,
+        panel = card ?: p.panel, panel2 = card ?: p.panel2,
+        ink = c("ink") ?: p.ink, muted = c("muted") ?: p.muted, line = c("line") ?: p.line,
+        accent = accent, accentInk = accentInk,
+        fab = c("fab"), nav = c("nav"), road = c("road"), bgPlanet = c("bg_planet"),
+        planetDone = c("planet_done"), planetTodo = c("planet_todo"), stars = c("stars"), card = card
+    )
+}
+
+fun readDev(prefs: android.content.SharedPreferences): Map<String, Int> {
+    val m = HashMap<String, Int>()
+    for ((k, _) in devKeys) if (prefs.contains("dev_$k")) m[k] = prefs.getInt("dev_$k", 0)
+    return m
 }
 
 // ---------- четырёхконечная звезда ----------
@@ -217,13 +268,13 @@ fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier, hasImage: 
             val yy = (((s.y - ph * s.k) % 1f) + 1f) % 1f
             val xx = s.x + 0.02f * sin(a * s.k + s.off * 6.28f)
             val tw = 0.35f + 0.65f * abs(sin(PI.toFloat() * (ph * s.tw + s.off)))
-            drawCircle(Color(0xFFE6DDFF).copy(alpha = 0.36f * tw), radius = (0.7f + s.size * 1.1f) * density, center = Offset(xx * w, yy * h))
+            drawCircle((p.stars ?: Color(0xFFE6DDFF)).copy(alpha = 0.36f * tw), radius = (0.7f + s.size * 1.1f) * density, center = Offset(xx * w, yy * h))
         }
         for (i in 0 until minOf(nStars, stars.size)) {
             val s = stars[i]
             val tw = 0.45f + 0.55f * abs(sin(PI.toFloat() * (ph * s.tw + s.off)))
             val bob = 5f * density * sin(a * s.k + s.off * 6.28f)
-            drawStar(Offset(s.x * w, s.y * h + bob), (3f + s.size * 3.5f) * density, tw * 0.9f)
+            drawStar(Offset(s.x * w, s.y * h + bob), (3f + s.size * 3.5f) * density, tw * 0.9f, p.stars ?: Color(0xFFD9CCFF))
         }
     }
 }
@@ -262,7 +313,8 @@ fun Panel(
         .then(if (onClick != null) Modifier.bounceClick(onClick) else Modifier)
         .clip(shape)
         .then(
-            if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(lerp(Color(0xD0211B2C), p.accent.copy(alpha = 0.82f), 0.07f), lerp(Color(0xD017131F), p.accent.copy(alpha = 0.82f), 0.04f))))
+            if (p.card != null) Modifier.background(p.card)
+            else if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(lerp(Color(0xD0211B2C), p.accent.copy(alpha = 0.82f), 0.07f), lerp(Color(0xD017131F), p.accent.copy(alpha = 0.82f), 0.04f))))
             else Modifier.background(p.panel)
         )
         .then(
