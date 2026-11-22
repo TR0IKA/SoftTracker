@@ -24,7 +24,9 @@ data class Habit(
     val archived: Boolean = false,
     val weeklyGoal: Int = 0,
     val remindersOn: Boolean = true,
-    val createdDay: LocalDate = LocalDate.now()
+    val createdDay: LocalDate = LocalDate.now(),
+    /** "" — без значка, эмодзи, либо "photo:<метка>" — своё фото в файле habit_<id>.jpg. */
+    val icon: String = ""
 ) {
     val isGood: Boolean get() = kind == "good"
 }

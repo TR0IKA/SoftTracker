@@ -129,6 +129,7 @@ private fun HabitCard(h: Habit, snap: Snapshot, today: LocalDate, p: Palette, a:
     val (wd, wg) = snap.weekProgress(h, today)
     Panel(p, modifier, onClick = { a.open(h.id) }, pad = 14.dp) {
         Row(verticalAlignment = Alignment.Top) {
+            HabitAvatar(h, p, 38.dp, Modifier.padding(end = 12.dp))
             Column(Modifier.weight(1f)) {
                 Text(h.title, color = if (h.archived) p.muted else p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = p.font)
                 Text(h.category, color = p.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))

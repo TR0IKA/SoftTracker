@@ -9,7 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 
-private const val HCOLS = "id,title,category,kind,note,favorite,archived,weekly_goal,reminders_on,created_day"
+private const val HCOLS = "id,title,category,kind,note,favorite,archived,weekly_goal,reminders_on,created_day,icon"
 
 fun parseDay(s: String?): LocalDate = try { LocalDate.parse(s) } catch (e: Exception) { LocalDate.now() }
 
@@ -17,7 +17,7 @@ fun parseDay(s: String?): LocalDate = try { LocalDate.parse(s) } catch (e: Excep
  * softtrack.db. Версия 1 -> 2: новые колонки habits, таблицы habit_rules и day_notes.
  * База не пересоздаётся: старые привычки и история переносятся миграцией.
  */
-class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, "softtrack.db", null, 2) {
+class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, "softtrack.db", null, 3) {
     companion object {
         @Volatile private var inst: HabitDb? = null
         fun get(ctx: Context): HabitDb = inst ?: synchronized(this) {
@@ -26,7 +26,7 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE habits(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,kind TEXT NOT NULL,schedule TEXT NOT NULL,note TEXT NOT NULL,favorite INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,weekly_goal INTEGER NOT NULL DEFAULT 0,reminders_on INTEGER NOT NULL DEFAULT 1,created_day TEXT NOT NULL DEFAULT '')")
+        db.execSQL("CREATE TABLE habits(id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,category TEXT NOT NULL,kind TEXT NOT NULL,schedule TEXT NOT NULL,note TEXT NOT NULL,favorite INTEGER NOT NULL DEFAULT 0,archived INTEGER NOT NULL DEFAULT 0,weekly_goal INTEGER NOT NULL DEFAULT 0,reminders_on INTEGER NOT NULL DEFAULT 1,created_day TEXT NOT NULL DEFAULT '',icon TEXT NOT NULL DEFAULT '')")
         db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY AUTOINCREMENT,habit_id INTEGER NOT NULL,day TEXT NOT NULL,status INTEGER NOT NULL,UNIQUE(habit_id,day))")
         createExtras(db)
     }
@@ -50,6 +50,9 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
                 while (c.moveToNext()) old.add(Triple(c.getLong(0), c.getString(1), c.getString(2)))
             }
             old.forEach { insertLegacyRules(db, it.first, it.second, it.third, today) }
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE habits ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
         }
     }
 
@@ -86,13 +89,13 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
             put("schedule", legacySchedule); put("note", h.note)
             put("favorite", if (h.favorite) 1 else 0); put("archived", if (h.archived) 1 else 0)
             put("weekly_goal", h.weeklyGoal); put("reminders_on", if (h.remindersOn) 1 else 0)
-            put("created_day", h.createdDay.toString())
+            put("created_day", h.createdDay.toString()); put("icon", h.icon)
         })
 
     private fun readHabit(c: Cursor) = Habit(
         id = c.getLong(0), title = c.getString(1), category = c.getString(2), kind = c.getString(3), note = c.getString(4),
         favorite = c.getInt(5) == 1, archived = c.getInt(6) == 1, weeklyGoal = c.getInt(7),
-        remindersOn = c.getInt(8) == 1, createdDay = parseDay(c.getString(9))
+        remindersOn = c.getInt(8) == 1, createdDay = parseDay(c.getString(9)), icon = c.getString(10) ?: ""
     )
 
     // ---------- чтение ----------
@@ -134,7 +137,7 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
                 db.update("habits", ContentValues().apply {
                     put("title", h.title); put("category", h.category); put("kind", h.kind); put("schedule", legacy)
                     put("note", h.note); put("favorite", if (h.favorite) 1 else 0)
-                    put("weekly_goal", h.weeklyGoal); put("reminders_on", if (h.remindersOn) 1 else 0)
+                    put("weekly_goal", h.weeklyGoal); put("reminders_on", if (h.remindersOn) 1 else 0); put("icon", h.icon)
                 }, "id=?", arrayOf(id.toString()))
             }
             if (!h.archived) applyRules(db, id, inputs, today)
@@ -240,7 +243,8 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
             hs.put(JSONObject().put("id", h.id).put("title", h.title).put("category", h.category).put("kind", h.kind)
                 .put("schedule", if (s.lastRuleInputs(h).map { it.dow }.distinct().size == 7) "daily" else "weekly")
                 .put("note", h.note).put("favorite", h.favorite).put("archived", h.archived)
-                .put("weeklyGoal", h.weeklyGoal).put("remindersOn", h.remindersOn).put("createdDay", h.createdDay.toString()))
+                .put("weeklyGoal", h.weeklyGoal).put("remindersOn", h.remindersOn).put("createdDay", h.createdDay.toString())
+                .put("icon", if (h.icon.startsWith("photo")) "" else h.icon))
             s.rulesOf(h.id).forEach { r ->
                 rs.put(JSONObject().put("habitId", r.habitId).put("dow", r.dow).put("minutes", r.minutes)
                     .put("from", r.from.toString()).put("to", r.to?.toString() ?: JSONObject.NULL))
@@ -295,7 +299,8 @@ class HabitDb private constructor(context: Context) : SQLiteOpenHelper(context, 
                 val h = Habit(
                     title = x.getString("title"), category = x.optString("category", "Мои привычки"), kind = kind,
                     note = x.optString("note", ""), favorite = x.optBoolean("favorite", false), archived = x.optBoolean("archived", false),
-                    weeklyGoal = weekly, remindersOn = x.optBoolean("remindersOn", true), createdDay = created
+                    weeklyGoal = weekly, remindersOn = x.optBoolean("remindersOn", true), createdDay = created,
+                    icon = x.optString("icon", "")
                 )
                 val newId = insertHabitRow(db, h, schedule)
                 ids[oldId] = newId

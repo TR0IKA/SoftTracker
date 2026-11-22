@@ -1,5 +1,6 @@
 package com.softtrack.app
 
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -108,7 +109,10 @@ fun HabitDetail(
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Panel(p, pad = 18.dp) {
-                Text(h.title, color = p.ink, fontSize = 24.sp, fontFamily = p.font, fontWeight = FontWeight.Medium, lineHeight = 30.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HabitAvatar(h, p, 52.dp, Modifier.padding(end = 14.dp))
+                    Text(h.title, color = p.ink, fontSize = 24.sp, fontFamily = p.font, fontWeight = FontWeight.Medium, lineHeight = 30.sp, modifier = Modifier.weight(1f))
+                }
                 if (h.note.isNotBlank()) Text(h.note, color = p.muted, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 8.dp))
                 if (h.isGood) {
                     Spacer(Modifier.height(14.dp))
@@ -241,7 +245,7 @@ private fun DayCell(h: Habit, snap: Snapshot, d: LocalDate, today: LocalDate, p:
 @Composable
 fun HabitEditor(
     existing: Habit?, snap: Snapshot, today: LocalDate, p: Palette,
-    onSave: (Habit, List<RuleInput>) -> Unit, onClose: () -> Unit,
+    onSave: (Habit, List<RuleInput>, android.graphics.Bitmap?) -> Unit, onClose: () -> Unit,
     template: HabitTemplate? = null, onTemplates: (() -> Unit)? = null
 ) {
     val ctx = LocalContext.current
@@ -253,6 +257,17 @@ fun HabitEditor(
     var remindersOn by remember { mutableStateOf(existing?.remindersOn ?: true) }
     var goal by remember { mutableStateOf(existing?.weeklyGoal ?: template?.goal ?: 0) }
     var catMenu by remember { mutableStateOf(false) }
+    var icon by remember { mutableStateOf(existing?.icon ?: "") }
+    var photo by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val pickPhoto = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: android.net.Uri? ->
+        if (uri != null) {
+            val b = Imgs.decode(ctx, uri, 512)
+            if (b != null) {
+                photo = b
+                icon = "photo:" + System.currentTimeMillis()
+            }
+        }
+    }
     val days = remember {
         mutableStateMapOf<Int, Int>().apply {
             val src = when {
@@ -284,9 +299,10 @@ fun HabitEditor(
                             id = existing?.id ?: 0, title = title.trim(), category = category, kind = kind, note = note.trim(),
                             favorite = favorite, archived = existing?.archived ?: false,
                             weeklyGoal = if (good) effGoal else 0, remindersOn = good && remindersOn,
-                            createdDay = existing?.createdDay ?: today
+                            createdDay = existing?.createdDay ?: today, icon = icon
                         ),
-                        inputs
+                        inputs,
+                        photo
                     )
                 }
             ) { Text("Сохранить") }
@@ -297,6 +313,40 @@ fun HabitEditor(
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Название") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors(p), shape = p.shape(14.dp))
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("Описание · необязательно") }, minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth(), colors = fieldColors(p), shape = p.shape(14.dp))
+            }
+            Panel(p) {
+                SectionLabel("Значок", p)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                        val pb = photo
+                        if (pb != null) {
+                            androidx.compose.foundation.Image(pb.asImageBitmap(), null, Modifier.size(56.dp).clip(CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        } else if (icon.startsWith("photo") && existing != null) {
+                            HabitAvatar(existing.copy(icon = icon), p, 56.dp)
+                        } else if (icon.isNotEmpty()) {
+                            Box(Modifier.size(56.dp).clip(CircleShape).background(p.panel2), contentAlignment = Alignment.Center) { Text(icon, fontSize = 28.sp) }
+                        } else {
+                            Box(Modifier.size(56.dp).clip(CircleShape).border(1.dp, p.line, CircleShape), contentAlignment = Alignment.Center) { Text("нет", color = p.muted, fontSize = 12.sp) }
+                        }
+                    }
+                    Column(Modifier.padding(start = 14.dp)) {
+                        OutlinedButton(onClick = { pickPhoto.launch("image/*") }, shape = p.shape(50.dp)) { Text("Своё фото", color = p.ink) }
+                        if (icon.isNotEmpty()) TextButton(onClick = { icon = ""; photo = null }) { Text("Убрать значок", color = p.muted) }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                habitEmojis.chunked(8).forEach { row ->
+                    Row(Modifier.fillMaxWidth()) {
+                        row.forEach { e ->
+                            Box(
+                                Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (icon == e) p.panel2 else Color.Transparent)
+                                    .clickable { icon = e; photo = null },
+                                contentAlignment = Alignment.Center
+                            ) { Text(e, fontSize = 22.sp) }
+                        }
+                    }
+                }
             }
             Panel(p) {
                 SectionLabel("Тип", p)

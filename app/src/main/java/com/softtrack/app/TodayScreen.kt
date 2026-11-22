@@ -172,6 +172,7 @@ fun HabitRow(h: Habit, snap: Snapshot, today: LocalDate, p: Palette, a: Actions,
     val time = snap.reminderMinutes(h, today)
     Panel(p, modifier, onClick = { a.open(h.id) }, pad = 14.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            HabitAvatar(h, p, 42.dp, Modifier.padding(end = 12.dp))
             Column(Modifier.weight(1f).padding(end = 10.dp)) {
                 Text(
                     h.title, color = if (done) p.muted else p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium, fontFamily = p.font,

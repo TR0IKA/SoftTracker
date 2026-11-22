@@ -50,13 +50,15 @@ import androidx.compose.ui.unit.sp
 
 class SettingsState(
     val look: Look, val accentName: String, val fxLevel: Int, val particles: Boolean,
-    val notify: Boolean, val notifGranted: Boolean, val exactOk: Boolean
+    val notify: Boolean, val notifGranted: Boolean, val exactOk: Boolean,
+    val bgOn: Boolean = false, val bgDim: Float = 0.55f
 )
 
 class SettingsActions(
     val onLook: (Look) -> Unit, val onAccent: (String) -> Unit, val onFxLevel: (Int) -> Unit, val onParticles: (Boolean) -> Unit,
     val onNotify: (Boolean) -> Unit, val onRequestPermission: () -> Unit, val onExactAlarms: () -> Unit, val onTestNotification: () -> Unit,
-    val onExport: () -> Unit, val onImport: () -> Unit
+    val onExport: () -> Unit, val onImport: () -> Unit,
+    val onPickBg: () -> Unit = {}, val onClearBg: () -> Unit = {}, val onBgDim: (Float) -> Unit = {}
 )
 
 @Composable
@@ -74,7 +76,9 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
             SectionLabel("Оформление", p)
             LookPreview("Aurora", "Графит и слива, лавандовые акценты, тихие звёзды", s.look == Look.AURORA, Color(0xFF0B0816), Color(0xFFB9A4FF), p) { a.onLook(Look.AURORA) }
             Spacer(Modifier.height(6.dp))
-            LookPreview("Field Notes", "Бумага, редакционная сетка, тёплый тон", s.look == Look.FIELD, Color(0xFFF0EEE7), Color(0xFFB79E54), p) { a.onLook(Look.FIELD) }
+            LookPreview("Nocturne", "Графит, холодный воздух, спокойный контраст", s.look == Look.NOCTURNE, Color(0xFF101722), Color(0xFF91AFC2), p) { a.onLook(Look.NOCTURNE) }
+            Spacer(Modifier.height(6.dp))
+            LookPreview("Путь", "Космос и 3D-дорога: привычки как планеты на пути", s.look == Look.ROAD, Color(0xFF0A1022), Color(0xFF6FA8FF), p) { a.onLook(Look.ROAD) }
         }
         Panel(p) {
             SectionLabel("Акцентный цвет", p)
@@ -105,9 +109,30 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
             CustomAccentDialog(resolveAccent(s.look, s.accentName), p, onPick = { a.onAccent(it); customDialog = false }, onDismiss = { customDialog = false })
         }
         Panel(p) {
+            SectionLabel("Фон приложения", p)
+            Text(
+                if (s.look == Look.ROAD) "В оформлении «Путь» фон космический, своё фото работает в Aurora и Nocturne."
+                else "Поставь своё фото фоном. Оно хранится только на этом устройстве.",
+                color = p.muted, fontSize = 13.sp, lineHeight = 18.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = a.onPickBg, shape = btnShape, colors = ButtonDefaults.buttonColors(containerColor = p.accent, contentColor = p.accentInk)) { Text("Выбрать фото") }
+                if (s.bgOn) OutlinedButton(onClick = a.onClearBg, shape = btnShape) { Text("Убрать", color = p.ink) }
+            }
+            if (s.bgOn) {
+                var dim by remember { mutableStateOf(s.bgDim) }
+                Text("Затемнение", color = p.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                Slider(
+                    value = dim, onValueChange = { dim = it; a.onBgDim(it) }, valueRange = 0.15f..0.9f,
+                    colors = SliderDefaults.colors(thumbColor = p.accent, activeTrackColor = p.accent, inactiveTrackColor = p.line)
+                )
+            }
+        }
+        Panel(p) {
             SectionLabel("Эффекты", p)
             Text(
-                if (s.look == Look.AURORA) "Свечение, звёзды и частицы на фоне. Для слабых устройств выбери меньше или выключи."
+                if (s.look != Look.NOCTURNE) "Свечение, звёзды и частицы на фоне. Для слабых устройств выбери меньше или выключи."
                 else "Фоновые эффекты работают в оформлении Aurora.",
                 color = p.muted, fontSize = 13.sp, lineHeight = 18.sp
             )
@@ -157,7 +182,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
         }
         Panel(p) {
             SectionLabel("О приложении", p)
-            Text("SoftTrack 1.3.0", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text("SoftTrack 1.3.1", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             Text("Привычки, расписание по дням недели и спокойная статистика. Данные хранятся только на этом устройстве.", color = p.muted, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }

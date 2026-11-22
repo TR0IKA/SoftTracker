@@ -1,5 +1,11 @@
 package com.softtrack.app
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -129,6 +135,11 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     var fxLevel by remember { mutableStateOf(prefs.getInt("fx_v13", 1)) }
     var particles by remember { mutableStateOf(prefs.getBoolean("fx_particles", true)) }
     var notify by remember { mutableStateOf(prefs.getBoolean("notify", true)) }
+    var bgVersion by remember { mutableStateOf(0) }
+    var bgDim by remember { mutableStateOf(prefs.getFloat("bg_dim", 0.55f)) }
+    val bgImage by produceState<ImageBitmap?>(null, bgVersion) {
+        value = withContext(Dispatchers.IO) { Imgs.load(ctx, Imgs.BG) }
+    }
 
     LaunchedEffect(resumeTick) {
         today = LocalDate.now()
@@ -163,6 +174,12 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
         ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    val pickBg = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val b = Imgs.decode(ctx, uri, 1600)
+            if (b != null && Imgs.save(ctx, Imgs.BG, b)) bgVersion++ else notice = "Не удалось открыть фото"
+        }
+    }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri != null) runCatching {
             ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(db.exportJson()) }
@@ -194,7 +211,8 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     val settingsState = SettingsState(
         look, accentName, fxLevel, particles, notify,
         notifGranted = permTick >= 0 && Reminders.canNotify(ctx),
-        exactOk = permTick >= 0 && Reminders.canExact(ctx)
+        exactOk = permTick >= 0 && Reminders.canExact(ctx),
+        bgOn = bgImage != null, bgDim = bgDim
     )
     val settingsActions = SettingsActions(
         onLook = { look = it; prefs.edit().putString("look2", it.name).apply() },
@@ -221,7 +239,10 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
         },
         onTestNotification = { Reminders.showTest(ctx) },
         onExport = { export.launch("SoftTrack-backup-${LocalDate.now()}.json") },
-        onImport = { import.launch(arrayOf("application/json", "text/*")) }
+        onImport = { import.launch(arrayOf("application/json", "text/*")) },
+        onPickBg = { pickBg.launch("image/*") },
+        onClearBg = { Imgs.delete(ctx, Imgs.BG); bgVersion++ },
+        onBgDim = { bgDim = it; prefs.edit().putFloat("bg_dim", it).apply() }
     )
 
     // экраны поверх основного
@@ -261,7 +282,12 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
 
     MaterialTheme(colorScheme = scheme) {
         Box(Modifier.fillMaxSize()) {
-            AuroraBackdrop(p, fx)
+            val bgShown = if (look == Look.ROAD) null else bgImage
+            if (bgShown != null) {
+                Image(bgShown, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = bgDim)))
+            }
+            AuroraBackdrop(p, fx, hasImage = bgShown != null)
 
             Column(Modifier.fillMaxSize().graphicsLayer { alpha = mainAlpha }.statusBarsPadding()) {
                 Header(tab, p)
@@ -275,7 +301,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                         label = "tabs"
                     ) { t ->
                         when (t) {
-                            0 -> TodayScreen(snap, today, p, actions)
+                            0 -> if (look == Look.ROAD) RoadScreen(snap, today, p, actions, fx) else TodayScreen(snap, today, p, actions)
                             1 -> HabitsScreen(snap, today, p, actions)
                             2 -> CalendarScreen(snap, today, p, actions)
                             3 -> StatsScreen(snap, today, p)
@@ -309,7 +335,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                                 commit()
                                 if (!h.archived) detailId = null
                             },
-                            onDelete = { db.deleteHabit(h.id); detailId = null; commit() }
+                            onDelete = { db.deleteHabit(h.id); Imgs.delete(ctx, Imgs.photoName(h.id)); detailId = null; commit() }
                         )
                     }
                 }
@@ -324,8 +350,10 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
                         existing = editTarget, snap = snap, today = today, p = p,
                         template = editTemplate,
                         onTemplates = { editing = false; templatesOpen = true },
-                        onSave = { h, rules ->
-                            db.saveHabit(h, rules, today)
+                        onSave = { h, rules, photo ->
+                            val savedId = db.saveHabit(h, rules, today)
+                            if (photo != null) Imgs.save(ctx, Imgs.photoName(savedId), photo)
+                            else if (!h.icon.startsWith("photo")) Imgs.delete(ctx, Imgs.photoName(savedId))
                             editing = false
                             editTemplate = null
                             templatesOpen = false

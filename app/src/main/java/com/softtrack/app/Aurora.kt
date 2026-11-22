@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +69,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-enum class Look { AURORA, FIELD }
+enum class Look { AURORA, NOCTURNE, ROAD }
 
 data class Fx(val level: Int, val particles: Boolean)
 
@@ -79,9 +80,10 @@ data class Palette(
     val ink: Color, val muted: Color, val line: Color,
     val accent: Color, val accentInk: Color, val danger: Color
 ) {
-    val editorial: Boolean get() = look == Look.FIELD
-    val aurora: Boolean get() = look == Look.AURORA
-    val light: Boolean get() = look == Look.FIELD
+    val editorial: Boolean get() = false
+    /** Тёмные «звёздные» оформления: стеклянные панели и фон с эффектами. */
+    val aurora: Boolean get() = look == Look.AURORA || look == Look.ROAD
+    val light: Boolean get() = false
     val font: FontFamily get() = if (editorial) FontFamily.Serif else FontFamily.Default
     fun shape(r: Dp = 17.dp): Shape = if (editorial) RoundedCornerShape(3.dp) else RoundedCornerShape(r)
     val checkShape: Shape get() = if (editorial) RoundedCornerShape(2.dp) else CircleShape
@@ -93,14 +95,23 @@ fun accentOptions(look: Look): List<Pair<String, Color>> = when (look) {
         "Голубой" to Color(0xFF8FC7FF), "Мятный" to Color(0xFF8FE3C8), "Розовый" to Color(0xFFFF9EC4), "Коралл" to Color(0xFFFF8F7A),
         "Золото" to Color(0xFFE8C468), "Изумруд" to Color(0xFF4FD1A0), "Закат" to Color(0xFFFFA05A), "Серебро" to Color(0xFFC9CCD6)
     )
-    Look.FIELD -> listOf(
-        "Сланец" to Color(0xFF9B8E70), "Шалфей" to Color(0xFF8B9F82), "Терракота" to Color(0xFFB96D58), "Охра" to Color(0xFFB79E54),
-        "Индиго" to Color(0xFF5F6FA8), "Бордо" to Color(0xFF9A4A5A), "Хвоя" to Color(0xFF4F7A6B), "Графит" to Color(0xFF4A4A48),
-        "Лиловый" to Color(0xFF8A6FA0), "Морская" to Color(0xFF4F8A9A), "Мандарин" to Color(0xFFD0803A), "Роза" to Color(0xFFC47A8E)
+    Look.NOCTURNE -> listOf(
+        "Сланец" to Color(0xFF91AFC2), "Шалфей" to Color(0xFF9DB59A), "Терракота" to Color(0xFFC77F68), "Охра" to Color(0xFFD1B96F),
+        "Лёд" to Color(0xFFA8C8E8), "Глициния" to Color(0xFFA99BC9), "Мята" to Color(0xFF8FC9B5), "Роза" to Color(0xFFC98A9A),
+        "Бронза" to Color(0xFFB88A5E), "Бирюза" to Color(0xFF6FB3B8), "Лазурь" to Color(0xFF7C9EDB), "Лимон" to Color(0xFFD6D17A)
+    )
+    Look.ROAD -> listOf(
+        "Орбита" to Color(0xFF6FA8FF), "Неон" to Color(0xFF5CE1E6), "Квазар" to Color(0xFFB27CFF), "Рассвет" to Color(0xFFFFB86B),
+        "Мята" to Color(0xFF7CF2C0), "Пульсар" to Color(0xFFFF7BD0), "Лёд" to Color(0xFFCFE8FF), "Плазма" to Color(0xFFFF6B6B),
+        "Солнце" to Color(0xFFFFD95E), "Комета" to Color(0xFF9BF0FF), "Ржавчина" to Color(0xFFE08A5A), "Пыль" to Color(0xFFD9D4FF)
     )
 }
 
-fun accentPrefKey(look: Look) = if (look == Look.AURORA) "accent_aurora" else "accent"
+fun accentPrefKey(look: Look) = when (look) {
+    Look.AURORA -> "accent_aurora"
+    Look.NOCTURNE -> "accent"
+    Look.ROAD -> "accent_road"
+}
 
 /** Свой цвет хранится в имени акцента как «#RRGGBB». */
 fun parseCustomAccent(name: String): Color? =
@@ -113,13 +124,18 @@ fun resolveAccent(look: Look, accentName: String): Color {
 
 fun buildPalette(look: Look, accentName: String): Palette {
     val accent = resolveAccent(look, accentName)
-    val dark = Color(0xFF14101F)
-    val ink = if (accent.luminance() > 0.35f) dark else Color.White
+    val ink = if (accent.luminance() > 0.35f) Color(0xFF14101F) else Color.White
+    fun tint(base: Color, k: Float) = lerp(base, accent, k)
     return when (look) {
-        Look.AURORA -> Palette(look, Color(0xFF060509), Color(0xFF15101F), Color(0xFF17131F), Color(0xB817131F), Color(0xFF231D2E),
-            Color(0xFFF5F2FA), Color(0xFFA59DB5), Color(0xFF2E2840), accent, ink, Color(0xFFE59AAE))
-        Look.FIELD -> Palette(look, Color(0xFFF0EEE7), Color(0xFFF0EEE7), Color(0xFFE7E4DA), Color(0xFFE7E4DA), Color(0xFFE0DDD2),
-            Color(0xFF171714), Color(0xFF77756C), Color(0xFFC9C5B9), accent, if (accent.luminance() > 0.35f) Color(0xFF171714) else Color.White, Color(0xFF9A594B))
+        // фон, панели и линии подкрашиваются выбранным акцентом
+        Look.AURORA -> Palette(look, tint(Color(0xFF060509), 0.03f), tint(Color(0xFF15101F), 0.17f), tint(Color(0xFF17131F), 0.08f),
+            tint(Color(0xFF17131F), 0.08f).copy(alpha = 0.72f), tint(Color(0xFF231D2E), 0.10f),
+            Color(0xFFF5F2FA), Color(0xFFA59DB5), tint(Color(0xFF2E2840), 0.16f), accent, ink, Color(0xFFE59AAE))
+        Look.ROAD -> Palette(look, tint(Color(0xFF03040A), 0.02f), tint(Color(0xFF0A1022), 0.14f), tint(Color(0xFF0E1426), 0.07f),
+            tint(Color(0xFF0E1426), 0.07f).copy(alpha = 0.72f), tint(Color(0xFF171F36), 0.10f),
+            Color(0xFFEAF1FF), Color(0xFF8FA0C0), tint(Color(0xFF243050), 0.16f), accent, ink, Color(0xFFFF8A8A))
+        Look.NOCTURNE -> Palette(look, Color(0xFF101722), Color(0xFF101722), Color(0xFF192331), Color(0xFF192331), Color(0xFF202C3B),
+            Color(0xFFF1F3F5), Color(0xFF98A6B8), Color(0xFF344253), accent, Color(0xFF101722), Color(0xFFD98C82))
     }
 }
 
@@ -159,9 +175,9 @@ fun StarGlyph(size: Dp, tint: Color = Color(0xFFD9CCFF), modifier: Modifier = Mo
 private class Spark(val x: Float, val y: Float, val size: Float, val k: Int, val off: Float, val tw: Int)
 
 @Composable
-fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier) {
+fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier, hasImage: Boolean = false) {
     if (!p.aurora) {
-        Box(modifier.background(p.bgTop))
+        if (!hasImage) Box(modifier.background(p.bgTop))
         return
     }
     val animated = fx.level > 0
@@ -182,17 +198,17 @@ fun AuroraBackdrop(p: Palette, fx: Fx, modifier: Modifier = Modifier) {
     Canvas(modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
-        drawRect(Brush.verticalGradient(listOf(p.bgTop, p.bgBottom)))
+        if (!hasImage) drawRect(Brush.verticalGradient(listOf(p.bgTop, p.bgBottom)))
         if (fx.level == 0) return@Canvas
         val ph = phaseState.value
         val a = 2f * PI.toFloat() * ph
-        val glow = 0.05f + 0.035f * fx.level
+        val glow = 0.08f + 0.04f * fx.level
         fun blob(cx: Float, cy: Float, r: Float, c: Color) {
             drawCircle(Brush.radialGradient(listOf(c.copy(alpha = glow), Color.Transparent), center = Offset(cx, cy), radius = r), radius = r, center = Offset(cx, cy))
         }
-        blob(w * (0.2f + 0.12f * sin(a)), h * (0.16f + 0.07f * cos(a)), w * 0.95f, Color(0xFF6B5AA8))
-        blob(w * (0.9f + 0.08f * cos(a)), h * (0.55f + 0.08f * sin(a)), w * 0.85f, Color(0xFF8E4A86))
-        blob(w * (0.3f + 0.14f * sin(2f * a + 1f)), h * (0.98f + 0.03f * cos(a)), w * 0.95f, Color(0xFF3A2A6B))
+        blob(w * (0.2f + 0.12f * sin(a)), h * (0.16f + 0.07f * cos(a)), w * 0.95f, lerp(Color(0xFF05040A), p.accent, 0.85f))
+        blob(w * (0.9f + 0.08f * cos(a)), h * (0.55f + 0.08f * sin(a)), w * 0.85f, lerp(Color(0xFF05040A), lerp(p.accent, Color.White, 0.2f), 0.7f))
+        blob(w * (0.3f + 0.14f * sin(2f * a + 1f)), h * (0.98f + 0.03f * cos(a)), w * 0.95f, lerp(Color(0xFF05040A), p.accent, 0.6f))
         if (!fx.particles) return@Canvas
         val nStars = 2 + fx.level * 2
         val nSparks = 6 + fx.level * 8
@@ -246,7 +262,7 @@ fun Panel(
         .then(if (onClick != null) Modifier.bounceClick(onClick) else Modifier)
         .clip(shape)
         .then(
-            if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(Color(0xD0211B2C), Color(0xD017131F))))
+            if (p.aurora) Modifier.background(Brush.verticalGradient(listOf(lerp(Color(0xD0211B2C), p.accent.copy(alpha = 0.82f), 0.07f), lerp(Color(0xD017131F), p.accent.copy(alpha = 0.82f), 0.04f))))
             else Modifier.background(p.panel)
         )
         .then(
