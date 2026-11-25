@@ -309,7 +309,13 @@ fun Panel(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = p.shape(18.dp)
+    val enter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { enter.animateTo(1f, tween(420, easing = FastOutSlowInEasing)) }
     val base = modifier.fillMaxWidth()
+        .graphicsLayer {
+            alpha = enter.value
+            translationY = (1f - enter.value) * 14.dp.toPx()
+        }
         .then(if (onClick != null) Modifier.bounceClick(onClick) else Modifier)
         .clip(shape)
         .then(

@@ -75,6 +75,8 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
     var customDialog by remember { mutableStateOf(false) }
     var devEditKey by remember { mutableStateOf<String?>(null) }
     var versionTaps by remember { mutableStateOf(0) }
+    val sigCtx = androidx.compose.ui.platform.LocalContext.current
+    val sig = remember { appSignature(sigCtx) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Panel(p) {
             SectionLabel("Оформление", p)
@@ -218,7 +220,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
         Panel(p) {
             SectionLabel("О приложении", p)
             Text(
-                "SoftTrack 1.3.2", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium,
+                "SoftTrack 1.3.3", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable {
                     if (!s.devOn) {
                         versionTaps++
@@ -226,6 +228,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions, p: Palette) {
                     }
                 }
             )
+            Text("Подпись сборки: $sig", color = p.muted, fontSize = 12.sp)
             if (!s.devOn && versionTaps >= 3) Text("До режима разработчика: ${7 - versionTaps}", color = p.muted, fontSize = 12.sp)
             Text("Привычки, расписание по дням недели и спокойная статистика. Данные хранятся только на этом устройстве.", color = p.muted, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
         }
@@ -303,3 +306,18 @@ private fun ColorDialog(title: String, initial: Color, p: Palette, allowAlpha: B
         }
     )
 }
+
+/** Короткий отпечаток подписи сборки: если у двух сборок он разный, поверх друг друга они не ставятся. */
+private fun appSignature(ctx: android.content.Context): String = runCatching {
+    val pm = ctx.packageManager
+    val bytes: ByteArray? = if (android.os.Build.VERSION.SDK_INT >= 28) {
+        val info = pm.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+        info.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+    } else {
+        @Suppress("DEPRECATION")
+        val info = pm.getPackageInfo(ctx.packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+        @Suppress("DEPRECATION")
+        info.signatures?.firstOrNull()?.toByteArray()
+    }
+    if (bytes == null) "?" else java.security.MessageDigest.getInstance("SHA-256").digest(bytes).take(4).joinToString("") { "%02X".format(it) }
+}.getOrDefault("?")

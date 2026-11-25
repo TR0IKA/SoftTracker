@@ -140,7 +140,7 @@ fun SoftTrackApp(db: HabitDb, prefs: SharedPreferences, resumeTick: Int) {
     var particles by remember { mutableStateOf(prefs.getBoolean("fx_particles", true)) }
     var notify by remember { mutableStateOf(prefs.getBoolean("notify", true)) }
     var bgVersion by remember { mutableStateOf(0) }
-    var roadSelected by remember { mutableStateOf<Long?>(null) }
+    var roadSelected by remember { mutableStateOf<String?>(null) }
     var dev by remember { mutableStateOf(readDev(prefs)) }
     var devOn by remember { mutableStateOf(prefs.getBoolean("dev_on", false)) }
     var bgDim by remember { mutableStateOf(prefs.getFloat("bg_dim", 0.55f)) }
